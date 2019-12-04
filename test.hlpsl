@@ -1,0 +1,171 @@
+role client (
+    IOT, CON, FOG : agent,
+    KM, KS : symmetric_key,
+    SND, RCV : channel(dy),
+    h, MAC, HKDF: hash_func
+)
+played_by IOT
+
+def=
+
+local
+    State : nat,	% Transition state
+    token : text,   % IoT Token
+    IDI : text,     % IoT ID
+    IDG : text,     % Gateway ID
+    N1 : nat,		% Random nonce n1
+    N2 : nat,		% Random nonce alpha
+    KiKS : text,     % initial session key
+    Message1 : text, 
+    Message2 : text, 
+    Message3 : text, 
+    RdmFrmSeq ; text,
+    JOIN : text,
+    ACK : text
+
+init
+    State := 0
+
+transition
+
+0. State = 0 /\ RCV(start) =|>
+    State' := 2 /\ IDI' = new()
+                /\ token' := new() 
+                /\ JOIN' := new() 
+                /\ N1' := new() 
+                /\ IDG' := new()
+                /\ Message1' := new()
+                /\ KiKS' := new()
+                /\ SND(
+                    IDI'
+                    .JOIN'
+                    .{N1'.token'.IDG'}_KM
+                    .{{Message1'}_MAC(KiKS')}_KM
+                    )
+                % witness
+2. State = 2 /\ RCV(
+                    IDG
+                    .{N2'.RdmFrmSeq'}_KM
+                    .{{Message2'}_MAC(KiKS)}_KM
+                ) =|>
+    State' := 4 /\ Message3 := new()
+                /\ SND(
+                    IDI
+                    .h({N2'.RdmFrmSeq'}_KM)
+                    .{{Message3'}_MAC(KiKS)}_KM
+                )
+3. State = 4 /\ RCV(
+                    IDG
+                    .{ACK'}_KM
+                    .{{Message4'}_MAC(KiKS)}_KM
+                )
+                % =|>
+                % witness(IOT, CON)
+
+end role
+
+role server (
+    IOT, CON : agent,
+    KM, KS : symmetric_key,
+    SND, RCV : channel(dy),
+    h, MAC, HKDF: hash_func
+)
+
+played_by CON
+
+def=
+
+local
+    State : nat,	% Transition state
+    token : text,   % IoT Token
+    IDI : text,     % IoT ID
+    IDG : text,     % Gateway ID
+    N1 : nat,		% Random nonce n1
+    N2 : nat,		% Random nonce alpha
+    KiKS : text,     % initial session key
+    Message1 : text, 
+    Message2 : text, 
+    Message3 : text, 
+    RdmFrmSeq ; text,
+    JOIN : text,
+    ACK : text
+
+init
+    State := 1
+
+transition
+
+1.  State = 1 /\ SND(
+                    IDI'
+                    .JOIN'
+                    .{N1'.token'.IDG'}_KM
+                    .{{Message1'}_MAC(KiKS')}_KM
+                    ) =|>
+        State' := 3 /\ N2' := new()
+                    /\ RdmFrmSeq' := new()
+                    /\ Message2' := new()
+                    /\ RCV(
+                            IDG'
+                            .{N2'.RdmFrmSeq'}_KM
+                            .{{Message2'}_MAC(KiKS')}_KM
+                        )
+                    % /\ witness
+
+3. State = 3 /\ RCV(
+                    IDI
+                    .h({N2.RdmFrmSeq}_KM)
+                    .{{Message3'}_MAC(KiKS)}_KM
+                ) =|>
+        State' := 5 /\ ACK' := new()
+                    /\ Message4' := new()
+                    /\ SND(
+                            IDG
+                            .{ACK'}_KM
+                            .{{Message4'}_MAC(KiKS)}_KM
+                        )
+end role
+
+role session (
+    IOT, CON : agent,
+    KM, KS : symmetric_key,
+    h, MAC, HKDF: hash_func
+)
+
+def=
+
+local
+    SI, SC, RC, RI : channel(dy)
+
+composition
+    client(IOT, CON, HKDF, SI, RI)
+    /\ server(IOT, CON, HKDF, SC, RC)
+
+end role
+
+role environment()
+
+def=
+
+const
+    IOT, CON : agent,
+    bob, key : protocol_id,
+    sIOTi, sIOTC, siC : symmetric_key,
+    h, MAC, HKDF: hash_func
+
+intruder_knowledge = {IOT, CON, SI, SB, HKDF, MAC} % ???????????
+
+composition
+    session(IOT, CON, sIOTC, HKDF)
+    /\ session(IOT, CON, sIOTC, HKDF)
+    /\ session(IOT, i, sIOTi, HKDF)
+    /\ session(i, CON, siC, HKDF)
+
+end role
+
+goal
+    % authentication_on ##
+    % secrecy_of key
+
+end goal
+
+environment()
