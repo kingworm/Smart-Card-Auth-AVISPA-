@@ -2,7 +2,7 @@ role client (
     IOT, CON, FOG : agent,
     KM, KS : symmetric_key,
     SND, RCV : channel(dy),
-    h, MAC, HKDF: hash_func
+    MAC, HKDF: hash_func
 )
 played_by IOT
 
@@ -10,16 +10,17 @@ def=
 
 local
     State : nat,	% Transition state
-    token : text,   % IoT Token
+    % token : text,   % IoT Token
     IDI : text,     % IoT ID
     IDG : text,     % Gateway ID
     N1 : nat,		% Random nonce n1
     N2 : nat,		% Random nonce alpha
     KiKS : text,     % initial session key
-    Message1 : text, 
-    Message2 : text, 
-    Message3 : text, 
-    RdmFrmSeq ; text,
+    Message1 : message, 
+    Message2 : message, 
+    Message3 : message, 
+    Message4 : message, 
+    RdmFrmSeq : text,
     JOIN : text,
     ACK : text
 
@@ -29,9 +30,9 @@ init
 transition
 
 0. State = 0 /\ RCV(start) =|>
-    State' := 2 /\ IDI' = new()
-                /\ token' := new() 
+    State' := 2 /\ IDI' := new()
                 /\ JOIN' := new() 
+                % /\ token := new()
                 /\ N1' := new() 
                 /\ IDG' := new()
                 /\ Message1' := new()
@@ -39,7 +40,7 @@ transition
                 /\ SND(
                     IDI'
                     .JOIN'
-                    .{N1'.token'.IDG'}_KM
+                    .{N1' . token . IDG'}_KM
                     .{{Message1'}_MAC(KiKS')}_KM
                     )
                 % witness
@@ -48,7 +49,7 @@ transition
                     .{N2'.RdmFrmSeq'}_KM
                     .{{Message2'}_MAC(KiKS)}_KM
                 ) =|>
-    State' := 4 /\ Message3 := new()
+    State' := 4 /\ Message3' := new()
                 /\ SND(
                     IDI
                     .h({N2'.RdmFrmSeq'}_KM)
@@ -58,9 +59,9 @@ transition
                     IDG
                     .{ACK'}_KM
                     .{{Message4'}_MAC(KiKS)}_KM
-                )
-                % =|>
-                % witness(IOT, CON)
+                ) =|>
+                % witness IOT, CON
+    State' := 6
 
 end role
 
@@ -68,7 +69,7 @@ role server (
     IOT, CON : agent,
     KM, KS : symmetric_key,
     SND, RCV : channel(dy),
-    h, MAC, HKDF: hash_func
+    MAC, HKDF: hash_func
 )
 
 played_by CON
@@ -77,16 +78,17 @@ def=
 
 local
     State : nat,	% Transition state
-    token : text,   % IoT Token
+    % token : text,   % IoT Token
     IDI : text,     % IoT ID
     IDG : text,     % Gateway ID
     N1 : nat,		% Random nonce n1
     N2 : nat,		% Random nonce alpha
     KiKS : text,     % initial session key
-    Message1 : text, 
-    Message2 : text, 
-    Message3 : text, 
-    RdmFrmSeq ; text,
+    Message1 : message, 
+    Message2 : message, 
+    Message3 : message, 
+    Message4 : message, 
+    RdmFrmSeq : text,
     JOIN : text,
     ACK : text
 
@@ -98,11 +100,10 @@ transition
 1.  State = 1 /\ SND(
                     IDI'
                     .JOIN'
-                    .{N1'.token'.IDG'}_KM
+                    .{N1' .token .IDG'}_KM
                     .{{Message1'}_MAC(KiKS')}_KM
                     ) =|>
         State' := 3 /\ N2' := new()
-                    /\ RdmFrmSeq' := new()
                     /\ Message2' := new()
                     /\ RCV(
                             IDG'
@@ -128,17 +129,17 @@ end role
 role session (
     IOT, CON : agent,
     KM, KS : symmetric_key,
-    h, MAC, HKDF: hash_func
+    HKDF: hash_func
 )
 
 def=
 
 local
-    SI, SC, RC, RI : channel(dy)
+    SI, SC, RI, RC : channel(dy)
 
 composition
-    client(IOT, CON, HKDF, SI, RI)
-    /\ server(IOT, CON, HKDF, SC, RC)
+    client(IOT, CON, KS, HKDF, SI, RI) % typeErr KS
+    /\ server(IOT, CON, KS, HKDF, SC, RC) % # of Args
 
 end role
 
@@ -147,24 +148,24 @@ role environment()
 def=
 
 const
-    IOT, CON : agent,
+    iot, con : agent,
     bob, key : protocol_id,
     sIOTi, sIOTC, siC : symmetric_key,
-    h, MAC, HKDF: hash_func
+    h: hash_func
 
-intruder_knowledge = {IOT, CON, SI, SB, HKDF, MAC} % ???????????
-
+intruder_knowledge = {iot, con, sIOTi, siC, h} % ???????????
+    % KM, KiKS
 composition
-    session(IOT, CON, sIOTC, HKDF)
-    /\ session(IOT, CON, sIOTC, HKDF)
-    /\ session(IOT, i, sIOTi, HKDF)
-    /\ session(i, CON, siC, HKDF)
+    session(iot, con, sIOTC, h)
+    /\ session(iot, con, sIOTC, h)
+    /\ session(iot, i, sIOTi, h)
+    /\ session(i, con, siC, h)
 
 end role
 
 goal
     % authentication_on ##
-    % secrecy_of key
+    secrecy_of key
 
 end goal
 
